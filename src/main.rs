@@ -2,7 +2,8 @@ use std::error::Error;
 
 use lsp_types::OneOf;
 use lsp_types::{
-    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
+    request::GotoDefinition, GotoDefinitionResponse, HoverProviderCapability, InitializeParams,
+    ServerCapabilities,
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
@@ -18,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         definition_provider: Some(OneOf::Left(true)),
+        hover_provider: Some(HoverProviderCapability::Simple(true)),
         ..Default::default()
     })
     .unwrap();
@@ -51,8 +53,12 @@ fn main_loop(
                     return Ok(());
                 }
                 eprintln!("got request: {req:?}");
-                match cast::<GotoDefinition>(req) {
-                    Ok((id, params)) => {
+                match req.method.as_str() {
+                    "textDocument/completion" => {
+                        todo!("completion")
+                    }
+                    "textDocument/definition" => {
+                        let (id, params) = cast::<GotoDefinition>(req)?;
                         eprintln!("got gotoDefinition request #{id}: {params:?}");
                         let result = Some(GotoDefinitionResponse::Array(Vec::new()));
                         let result = serde_json::to_value(&result).unwrap();
@@ -64,10 +70,8 @@ fn main_loop(
                         connection.sender.send(Message::Response(resp))?;
                         continue;
                     }
-                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
-                    Err(ExtractError::MethodMismatch(req)) => req,
-                };
-                // ...
+                    _ => todo!("{req:?}"),
+                }
             }
             Message::Response(resp) => {
                 eprintln!("got response: {resp:?}");
