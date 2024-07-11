@@ -1,4 +1,4 @@
-use std::{error::Error, fs, process::Command};
+use std::{error::Error, fmt::Display, fs, process::Command};
 
 use lsp_types::request::{Completion, HoverRequest};
 use lsp_types::{
@@ -13,6 +13,15 @@ pub struct InstructionSpec {
     pub desc: String,
     pub code: String,
     pub notes: String,
+}
+impl Display for InstructionSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let notes = match self.notes.len() {
+            0 => "".to_string(),
+            _ => format!("*Notes*\n{}", self.notes),
+        };
+        write!(f, "{}\n```\n{}\n```\n{}", self.desc, self.code, notes)
+    }
 }
 
 fn read_text(params: &TextDocumentPositionParams) -> Result<String, Box<dyn Error + Sync + Send>> {
@@ -45,6 +54,12 @@ where
     Ok(serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap())
 }
 
+#[derive(Deserialize)]
+struct KV<T> {
+    key: String,
+    value: T,
+}
+
 pub fn resolve(req: Request) -> Result<Response, Box<dyn Error + Sync + Send>> {
     match req.method.as_str() {
         "textDocument/completion" => {
@@ -52,13 +67,14 @@ pub fn resolve(req: Request) -> Result<Response, Box<dyn Error + Sync + Send>> {
             let ret = match params.context.unwrap().trigger_character {
                 Some(_) => {
                     let text = read_text(&params.text_document_position)?;
-                    let completions = match jq::<Vec<String>>(format!(
-                        r#". | to_entries | map(select(.key | startswith("{text}")).key)"#,
+                    let completions = match jq::<Vec<KV<InstructionSpec>>>(format!(
+                        r#". | to_entries | map(select(.key | startswith("{text}")))"#,
                     ))? {
                         Some(matches) => matches
                             .iter()
                             .map(|m| CompletionItem {
-                                label: m.to_string(),
+                                label: m.key.clone(),
+                                detail: Some(m.value.to_string()),
                                 ..Default::default()
                             })
                             .collect(),
@@ -83,25 +99,14 @@ pub fn resolve(req: Request) -> Result<Response, Box<dyn Error + Sync + Send>> {
         }),
         "textDocument/hover" => {
             let (id, params) = cast::<HoverRequest>(req)?;
-            eprintln!("{params:?}");
             let text = read_text(&params.text_document_position_params)?;
             let value = jq::<InstructionSpec>(format!(".{}", text))?;
             let result = match value {
                 Some(v) => {
-                    let value = format!(
-                        "{}\n```\n{}\n```\n{}",
-                        v.desc,
-                        v.code,
-                        if v.notes.len() != 0 {
-                            format!("*Notes*\n{}", v.notes)
-                        } else {
-                            "".to_string()
-                        }
-                    );
                     let ret = Hover {
                         contents: HoverContents::Markup(lsp_types::MarkupContent {
                             kind: lsp_types::MarkupKind::Markdown,
-                            value,
+                            value: v.to_string(),
                         }),
                         range: None,
                     };
@@ -131,7 +136,6 @@ where
 #[cfg(test)]
 mod test_resolver {
     use super::*;
-    use lsp_types::*;
     use serde_json::{json, Value};
     use std::{fs::File, io::Write};
 
