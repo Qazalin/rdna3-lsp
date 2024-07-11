@@ -1,7 +1,10 @@
 use std::error::Error;
 
 use lsp_types::OneOf;
-use lsp_types::{HoverProviderCapability, InitializeParams, ServerCapabilities};
+use lsp_types::{
+    CompletionOptions, HoverProviderCapability, InitializeParams, ServerCapabilities,
+    WorkDoneProgressOptions,
+};
 
 use lsp_server::{Connection, Message};
 mod resolver;
@@ -12,6 +15,19 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         definition_provider: Some(OneOf::Left(true)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
+        completion_provider: Some(CompletionOptions {
+            resolve_provider: Some(true),
+            trigger_characters: Some({
+                let mut tc: Vec<_> = ('a'..='z').map(|c| c.to_string()).collect();
+                tc.push("_".to_string());
+                tc
+            }),
+            all_commit_characters: None,
+            work_done_progress_options: WorkDoneProgressOptions {
+                work_done_progress: None,
+            },
+            completion_item: None,
+        }),
         ..Default::default()
     })
     .unwrap();
