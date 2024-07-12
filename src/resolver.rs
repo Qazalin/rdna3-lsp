@@ -139,16 +139,16 @@ mod test_resolver {
     use serde_json::{json, Value};
     use std::{fs::File, io::Write};
 
-    static FP: &'static str = "/private/tmp/test.s";
-    fn _seed_file(seed: &str) {
-        File::create(FP)
+    fn _seed_file(seed: &str, fp: &str) {
+        File::create(fp)
             .unwrap()
             .write_all(seed.as_bytes())
             .unwrap();
     }
 
     fn _helper_test_hover(seed: &str, line: usize, character: usize) -> Response {
-        _seed_file(seed);
+        static FP: &'static str = "/private/tmp/test_hover.s";
+        _seed_file(seed, FP);
         resolve(Request {
             id: 1.into(),
             method: "textDocument/hover".into(),
@@ -180,8 +180,8 @@ mod test_resolver {
         line: usize,
         character: usize,
     ) -> Option<Vec<CompletionItem>> {
-        _seed_file(seed);
-
+        static FP: &'static str = "/private/tmp/test_complete.s";
+        _seed_file(seed, FP);
         let res = resolve(Request {
             id: 1.into(),
             method: "textDocument/completion".into(),
