@@ -11,6 +11,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+    - name: Setup ref
+      run: curl -o /tmp/ref.json https://m7ymdt1k0usrgkaw.public.blob.vercel-storage.com/ref-AE1iSFICGehh5djA8FKcfB0YXinZjG.json
     - name: Run tests
       run: cargo test
     - name: Build release
