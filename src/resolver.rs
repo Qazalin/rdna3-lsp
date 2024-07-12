@@ -37,8 +37,8 @@ fn read_text(
     };
     let (mut val, mut idx) = ("", 0);
     let mut start = 0;
+    eprintln!("{:?} {}", words.clone().collect::<Vec<_>>(), character_idx);
     for (i, w) in words.enumerate() {
-        println!("{i} {w}");
         start += w.len();
         if start >= character_idx {
             val = w;
@@ -46,6 +46,7 @@ fn read_text(
             break;
         }
     }
+    eprintln!("RET={idx} {val}");
     Ok((val.to_string(), idx))
 }
 
