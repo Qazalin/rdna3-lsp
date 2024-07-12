@@ -1,7 +1,7 @@
 # pip install pdfplumber
-import pdfplumber, json
+import pdfplumber, json, urllib.request, tempfile
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 @dataclass
 class InstructionSpec:
@@ -17,7 +17,15 @@ NOTES = "025510+SourceSerifPro-Bold"
 ITALIC = "a75df5+SourceSerifPro-It"
 
 spec: List[InstructionSpec] = []
-with pdfplumber.open("/Users/qazal/Downloads/ref.pdf") as pdf:
+req = urllib.request.Request("https://m7ymdt1k0usrgkaw.public.blob.vercel-storage.com/ref-jRgBvTGLG866V3AJ3U0BmVkIefoNuU.pdf")
+req.add_header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+with urllib.request.urlopen(req, timeout=5) as r:
+  assert r.status == 200
+  with tempfile.NamedTemporaryFile(delete=False) as f:
+    while chunk := r.read(16384): f.write(chunk)
+    f.close()
+
+with pdfplumber.open(f.name) as pdf:
   toc = pdf.pages[8].extract_text().splitlines()
   instructions = list(filter(lambda x:len(x.strip()), toc[[i for i,x in enumerate(toc) if "Instructions" in x][0]+1:]))
   start = int(instructions[0].split(".")[-1])+8
@@ -45,4 +53,4 @@ with pdfplumber.open("/Users/qazal/Downloads/ref.pdf") as pdf:
 
 kv: Dict[str, Dict] = {}
 for s in spec: kv[s.name] = {"desc":s.desc, "code":s.code, "notes":s.notes}
-json.dump(kv, open("/Users/qazal/code/rdna3/ref.json", "w"))
+json.dump(kv, open("/tmp/ref.json", "w"))

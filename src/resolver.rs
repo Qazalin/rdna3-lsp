@@ -54,7 +54,7 @@ fn jq<T>(arg: String) -> Result<Option<T>, Box<dyn Error + Sync + Send>>
 where
     T: DeserializeOwned,
 {
-    let ref_path = "/Users/qazal/code/rdna3-lsp/ref.json";
+    let ref_path = "/tmp/ref.json";
     let output = Command::new("jq").arg(arg).arg(ref_path).output()?;
     Ok(serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap())
 }
