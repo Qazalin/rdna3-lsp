@@ -24,7 +24,9 @@ impl Display for InstructionSpec {
     }
 }
 
-fn read_text(params: &TextDocumentPositionParams) -> Result<String, Box<dyn Error + Sync + Send>> {
+fn read_text(
+    params: &TextDocumentPositionParams,
+) -> Result<(String, usize), Box<dyn Error + Sync + Send>> {
     let fp = params.text_document.uri.path().to_string();
     let content = fs::read_to_string(&fp)?;
     let line = content.split("\n").nth(params.position.line as usize);
@@ -33,16 +35,18 @@ fn read_text(params: &TextDocumentPositionParams) -> Result<String, Box<dyn Erro
         true => 0,
         false => params.position.character as usize - 1,
     };
-    let mut val = "";
+    let (mut val, mut idx) = ("", 0);
     let mut start = 0;
-    for w in words {
+    for (i, w) in words.enumerate() {
+        println!("{i} {w}");
         start += w.len();
         if start >= character_idx {
             val = w;
+            idx = i;
             break;
         }
     }
-    Ok(val.to_string())
+    Ok((val.to_string(), idx))
 }
 
 fn jq<T>(arg: String) -> Result<Option<T>, Box<dyn Error + Sync + Send>>
@@ -66,19 +70,22 @@ pub fn resolve(req: Request) -> Result<Response, Box<dyn Error + Sync + Send>> {
             let (id, params) = cast::<Completion>(req)?;
             let ret = match params.context.unwrap().trigger_character {
                 Some(_) => {
-                    let text = read_text(&params.text_document_position)?;
-                    let completions = match jq::<Vec<KV<InstructionSpec>>>(format!(
-                        r#". | to_entries | map(select(.key | startswith("{text}")))"#,
-                    ))? {
-                        Some(matches) => matches
-                            .iter()
-                            .map(|m| CompletionItem {
-                                label: m.key.clone(),
-                                detail: Some(m.value.to_string()),
-                                ..Default::default()
-                            })
-                            .collect(),
-                        None => vec![],
+                    let (text, idx) = read_text(&params.text_document_position)?;
+                    let completions = match idx == 0 {
+                        true => match jq::<Vec<KV<InstructionSpec>>>(format!(
+                            r#". | to_entries | map(select(.key | startswith("{text}")))"#,
+                        ))? {
+                            Some(matches) => matches
+                                .iter()
+                                .map(|m| CompletionItem {
+                                    label: m.key.clone(),
+                                    detail: Some(m.value.to_string()),
+                                    ..Default::default()
+                                })
+                                .collect(),
+                            None => vec![],
+                        },
+                        false => vec![],
                     };
                     let ret = CompletionResponse::Array(completions);
                     Some(ret)
@@ -99,7 +106,7 @@ pub fn resolve(req: Request) -> Result<Response, Box<dyn Error + Sync + Send>> {
         }),
         "textDocument/hover" => {
             let (id, params) = cast::<HoverRequest>(req)?;
-            let text = read_text(&params.text_document_position_params)?;
+            let (text, _) = read_text(&params.text_document_position_params)?;
             let value = jq::<InstructionSpec>(format!(".{}", text))?;
             let result = match value {
                 Some(v) => {
@@ -176,12 +183,10 @@ mod test_resolver {
     }
 
     fn _helper_test_complete(
-        seed: &str,
         line: usize,
         character: usize,
+        fp: &str,
     ) -> Option<Vec<CompletionItem>> {
-        static FP: &'static str = "/private/tmp/test_complete.s";
-        _seed_file(seed, FP);
         let res = resolve(Request {
             id: 1.into(),
             method: "textDocument/completion".into(),
@@ -191,7 +196,7 @@ mod test_resolver {
                     "triggerCharacter": "u"
                 },
                 "textDocument": {
-                    "uri": format!("file://{FP}")
+                    "uri": format!("file://{fp}")
                 },
                 "position": {
                     "line": line,
@@ -204,8 +209,10 @@ mod test_resolver {
     }
 
     #[test]
-    fn test_autocomplete() {
-        let ret = _helper_test_complete("s_add", 0, 0)
+    fn test_autocomplete_instr() {
+        static FP: &'static str = "/private/tmp/test_complete.s";
+        _seed_file("s_add", FP);
+        let ret = _helper_test_complete(0, 0, FP)
             .unwrap()
             .iter()
             .map(|x| x.label.clone())
@@ -214,5 +221,17 @@ mod test_resolver {
             ret,
             vec!["s_add_u32", "s_add_i32", "s_addc_u32", "s_addk_i32"]
         );
+    }
+
+    #[test]
+    fn test_autocomplete_operands() {
+        static FP: &'static str = "/private/tmp/test_complete_oprs.s";
+        _seed_file("s_add_u32 s", FP);
+        let ret = _helper_test_complete(0, 11, FP)
+            .unwrap()
+            .iter()
+            .map(|x| x.label.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(ret.len(), 0);
     }
 }
